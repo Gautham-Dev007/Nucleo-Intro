@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32 Nucleo Pin Explorer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f8f7f4;
+    color: #1a1a18;
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 500;
+    color: #1a1a18;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #5f5e5a;
+    margin-bottom: 20px;
+  }
+  .wrap {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  .board { flex: 0 0 auto; }
+  .panel {
+    flex: 1;
+    min-width: 240px;
+    background: #fff;
+    border: 1px solid #e0dfd8;
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 240px;
+  }
+  .pname { font-size: 14px; font-weight: 500; color: #1a1a18; margin-bottom: 6px; }
+  .pdesc { font-size: 12px; color: #5f5e5a; line-height: 1.65; }
+  .ptag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin: 3px 3px 0 0;
+    font-weight: 500;
+  }
+  .uses-label { margin-top: 10px; font-size: 11px; font-weight: 500; color: #888780; }
+  .danger-box {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #fdf3f3;
+    border-left: 3px solid #e24b4a;
+    border-radius: 0 6px 6px 0;
+    font-size: 11px;
+    color: #5f5e5a;
+    line-height: 1.55;
+  }
+  .hint { font-size: 12px; color: #b4b2a9; margin-top: 60px; text-align: center; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    max-width: 320px;
+  }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #5f5e5a; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  svg { display: block; }
+  circle { transition: r 0.15s, opacity 0.15s; }
+  .pin-group { cursor: pointer; }
+  .pin-group:hover circle { opacity: 1 !important; }
+</style>
+</head>
+<body>
+<div style="max-width:780px;margin:0 auto">
+  <h1>STM32 Nucleo — Pin Explorer</h1>
+  <p class="subtitle">Click any pin to learn what it does, how to use it, and what to watch out for.</p>
+  <div class="wrap">
+    <div class="board">
+      <div class="legend" id="legend"></div>
+      <svg width="320" viewBox="0 0 320 640" id="pinsvg">
+        <rect x="80" y="10" width="160" height="620" rx="10" fill="#fff" stroke="#d3d1c7" stroke-width="1.5"/>
+        <text x="160" y="34" text-anchor="middle" font-size="11" fill="#888780" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">STM32 Nucleo-64</text>
+        <text x="160" y="48" text-anchor="middle" font-size="9" fill="#b4b2a9" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">interactive pinout</text>
+      </svg>
+    </div>
+    <div class="panel" id="panel">
+      <div class="hint">Click any coloured pin on the board to explore what it does</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const pins = [
+  {id:'3v3',label:'3V3',x:80,y:70,side:'L',cat:'power',full:'3.3V power output',desc:'Provides regulated 3.3V from the onboard regulator. Use this to power 3.3V peripherals like sensors and OLEDs. Max current ~300mA total from this rail — do not connect high-current devices directly.',uses:['Power sensors','Power OLEDs','Logic reference'],danger:'Never connect 5V devices to this rail.'},
+  {id:'5v',label:'5V',x:80,y:105,side:'L',cat:'power',full:'5V USB power',desc:'5V directly from the USB port. Only available when the Nucleo is powered via USB. Can power 5V peripherals but be careful — the STM32 GPIO pins are 3.3V logic and not 5V tolerant on all pins.',uses:['Power 5V LCDs','Power motors via driver'],danger:'Do not feed 5V directly into GPIO pins — may damage the chip.'},
+  {id:'gnd1',label:'GND',x:80,y:140,side:'L',cat:'gnd',full:'Ground (GND)',desc:'The reference point for all voltages in your circuit. Every component that needs power must have its negative terminal connected to GND. Multiple GND pins exist on the board — they are all the same point internally.',uses:['Breadboard ground rail','Common reference for all components'],danger:'Always connect GND before VCC when wiring.'},
+  {id:'rst',label:'RESET',x:80,y:175,side:'L',cat:'digital',full:'Reset pin',desc:'Pulling this pin LOW resets the microcontroller — exactly like pressing the black RESET button on the board. Useful for software-controlled resets or watchdog circuits.',uses:['External reset button','Watchdog circuit'],danger:''},
+  {id:'a0',label:'A0',x:80,y:215,side:'L',cat:'analog',full:'Analog input A0',desc:'Reads analog voltages between 0V and 3.3V using the 12-bit ADC. Returns values 0–4095. This is where you connect potentiometers, light sensors, microphones, and any sensor that outputs a varying voltage. The STM32 ADC is 4× more precise than the Arduino Uno.',uses:['Potentiometer','Light sensor (LDR)','Microphone module','Temperature sensor (LM35)'],danger:'Never apply more than 3.3V to this pin. 5V will damage the ADC.'},
+  {id:'a1',label:'A1',x:80,y:250,side:'L',cat:'analog',full:'Analog input A1',desc:'Second analog input pin. Works identically to A0. You can have multiple analog sensors connected to different Ax pins and read them independently in your code with analogRead().',uses:['Second potentiometer','Joystick axis'],danger:'Max 3.3V input.'},
+  {id:'a2',label:'A2',x:80,y:285,side:'L',cat:'analog',full:'Analog input A2',desc:'Third analog input. On some Nucleo variants this pin can also act as a DAC output (Digital-to-Analog Converter) — meaning you can output a true analog voltage, not just PWM.',uses:['Analog sensor input','DAC output on supported boards'],danger:''},
+  {id:'a3',label:'A3',x:80,y:320,side:'L',cat:'analog',full:'Analog input A3',desc:'Fourth analog input. All analog pins share the same ADC hardware inside the chip — they are multiplexed. The chip switches between them rapidly so you can read multiple sensors in sequence.',uses:['Analog sensor input'],danger:''},
+  {id:'d0',label:'D0 / RX',x:80,y:360,side:'L',cat:'uart',full:'D0 — UART Receive (RX)',desc:'This digital pin doubles as the UART receive pin. When you use Serial on the Nucleo, incoming data arrives here. RX on your device connects to TX on the other device — always cross the wires.',uses:['GPS module data in','Bluetooth module RX','PC serial communication'],danger:'Cross-wire rule: your RX → their TX, your TX → their RX.'},
+  {id:'d1',label:'D1 / TX',x:80,y:395,side:'L',cat:'uart',full:'D1 — UART Transmit (TX)',desc:'UART transmit pin. Data you send using Serial.print() goes out through here. On most Nucleo boards, the USB-serial bridge uses a separate internal UART so D0/D1 are free for external devices.',uses:['Send data to another device','GPS or Bluetooth module TX'],danger:'Do not drive this pin from external 5V logic.'},
+  {id:'d2',label:'D2',x:80,y:430,side:'L',cat:'digital',full:'Digital I/O — D2',desc:'A standard general-purpose digital pin. Can be configured as input or output. As output: 0V (LOW) or 3.3V (HIGH). As input: reads whether a signal is LOW or HIGH. Supports interrupts on most Nucleo variants — meaning it can trigger code immediately when a signal changes.',uses:['LED output','Button input','Relay trigger','Interrupt source'],danger:'Max 3.3V. Current limit 8mA per pin, 120mA total across all GPIO.'},
+  {id:'d3',label:'D3 / PWM',x:80,y:465,side:'L',cat:'pwm',full:'D3 — Digital + PWM output',desc:'Digital pin with PWM capability. PWM (Pulse Width Modulation) rapidly switches the pin ON and OFF to simulate an analog voltage. Use analogWrite(pin, 0–255) to control the duty cycle. At 128 (50%) an LED glows at half brightness. The eye cannot detect the switching.',uses:['LED dimming','DC motor speed control','Servo position','Buzzer tone generation'],danger:'PWM is not a true analog signal — it pulses. Add a low-pass filter circuit for smooth DC output.'},
+  {id:'d13',label:'D13 / SCK',x:240,y:215,side:'R',cat:'spi',full:'D13 — SPI Clock (SCK)',desc:'The SPI clock line. The Nucleo (as master) generates a clock pulse here for every bit transferred. All SPI devices on the bus share this single line. The clock speed can be configured in software — faster is better for displays.',uses:['SPI SD card clock','SPI TFT LCD clock','SPI IMU sensor'],danger:''},
+  {id:'d12',label:'D12 / MISO',x:240,y:250,side:'R',cat:'spi',full:'D12 — SPI MISO (Master In, Slave Out)',desc:'Data flows FROM the SPI device back TO the Nucleo on this wire. MISO = the peripheral is talking, the Nucleo is listening. Not all SPI devices use MISO — write-only devices like basic displays do not send data back.',uses:['Reading from SD card','Reading from SPI sensor'],danger:''},
+  {id:'d11',label:'D11 / MOSI',x:240,y:285,side:'R',cat:'spi',full:'D11 — SPI MOSI (Master Out, Slave In)',desc:'Data flows FROM the Nucleo TO the SPI device on this wire. MOSI = the Nucleo is talking, the peripheral is listening. When you send a command or pixel data to an SPI display, it travels here.',uses:['Sending commands to SPI LCD','Writing data to SD card'],danger:''},
+  {id:'d10',label:'D10 / CS',x:240,y:320,side:'R',cat:'spi',full:'D10 — SPI Chip Select (CS/SS)',desc:'The Chip Select pin activates a specific SPI device by pulling it LOW. All other SPI devices ignore the bus when their CS is HIGH. You need one CS pin per SPI device — D10 is the default but any digital pin works as CS.',uses:['Select active SPI device','Multiple SPI devices need separate CS pins'],danger:'Only one CS should be LOW at a time — two active devices on the same bus causes conflicts and corrupted data.'},
+  {id:'d14',label:'D14 / SDA',x:240,y:360,side:'R',cat:'i2c',full:'D14 — I2C SDA (Serial Data)',desc:'The I2C data line. All I2C data — commands and responses — travel on this single bidirectional wire, one bit at a time. Multiple I2C devices share this wire, distinguished by their unique 7-bit addresses. Requires a pull-up resistor (4.7kΩ to 3.3V) — most breakout boards include this.',uses:['OLED display data','Temperature sensor data','Accelerometer data'],danger:'Must have pull-up resistor to 3.3V. Without it, I2C communication will not work at all.'},
+  {id:'d15',label:'D15 / SCL',x:240,y:395,side:'R',cat:'i2c',full:'D15 — I2C SCL (Serial Clock)',desc:'The I2C clock line. The Nucleo generates clock pulses here to synchronise every bit of data transfer with the peripheral device. All I2C devices on the bus share this wire alongside SDA. Also needs a pull-up resistor.',uses:['OLED display clock','Clock for all I2C devices'],danger:'Both SDA and SCL need pull-up resistors. Missing even one will prevent I2C from working.'},
+  {id:'gnd2',label:'GND',x:240,y:430,side:'R',cat:'gnd',full:'Ground (GND) — second location',desc:'Additional ground pin — electrically identical to all other GND pins. Having multiple ground pins in different locations on the board makes breadboard wiring cleaner — you can ground components on both sides without long wires.',uses:['Ground reference for right-side components'],danger:''},
+  {id:'vin',label:'VIN',x:240,y:465,side:'R',cat:'power',full:'VIN — External power input',desc:'Connect an external DC supply (7–12V) here to power the Nucleo without USB. The onboard regulator converts it to 3.3V and 5V for the board and your components. Useful for battery-powered or standalone projects.',uses:['9V battery via snap connector','DC wall adapter','Battery pack'],danger:'Max 12V input. Never connect USB and VIN simultaneously — two power sources will fight and may damage the regulator.'},
+];
+
+const catColors = {
+  power:'#E24B4A', gnd:'#444441', analog:'#378ADD',
+  digital:'#639922', i2c:'#7F77DD', spi:'#D85A30',
+  uart:'#1D9E75', pwm:'#BA7517'
+};
+const catBg = {
+  power:'#FCEBEB', gnd:'#F1EFE8', analog:'#E6F1FB',
+  digital:'#EAF3DE', i2c:'#EEEDFE', spi:'#FAECE7',
+  uart:'#E1F5EE', pwm:'#FAEEDA'
+};
+const catLabel = {
+  power:'Power', gnd:'Ground', analog:'Analog in',
+  digital:'Digital I/O', i2c:'I2C', spi:'SPI',
+  uart:'UART', pwm:'PWM / Digital'
+};
+
+// Build legend
+const legendEl = document.getElementById('legend');
+Object.entries(catLabel).forEach(([k,v]) => {
+  const d = document.createElement('div');
+  d.className = 'leg';
+  d.innerHTML = `<div class="leg-dot" style="background:${catColors[k]}"></div><span>${v}</span>`;
+  legendEl.appendChild(d);
+});
+
+const svg = document.getElementById('pinsvg');
+const panel = document.getElementById('panel');
+
+pins.forEach(p => {
+  const isL = p.side === 'L';
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.className = 'pin-group';
+
+  const cx = isL ? p.x - 14 : p.x + 14;
+
+  const lineEl = document.createElementNS('http://www.w3.org/2000/svg','line');
+  lineEl.setAttribute('x1', isL ? p.x - 7 : p.x + 7);
+  lineEl.setAttribute('y1', p.y);
+  lineEl.setAttribute('x2', p.x);
+  lineEl.setAttribute('y2', p.y);
+  lineEl.setAttribute('stroke', catColors[p.cat]);
+  lineEl.setAttribute('stroke-width','1.5');
+
+  const circ = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circ.setAttribute('cx', cx);
+  circ.setAttribute('cy', p.y);
+  circ.setAttribute('r','7');
+  circ.setAttribute('fill', catColors[p.cat]);
+  circ.setAttribute('stroke','none');
+  circ.style.opacity = '0.7';
+  circ.id = 'circ-' + p.id;
+
+  const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+  txt.setAttribute('x', isL ? p.x - 26 : p.x + 26);
+  txt.setAttribute('y', p.y + 1);
+  txt.setAttribute('text-anchor', isL ? 'end' : 'start');
+  txt.setAttribute('dominant-baseline','central');
+  txt.setAttribute('font-size','10');
+  txt.setAttribute('fill','#888780');
+  txt.setAttribute('font-family',"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif");
+  txt.textContent = p.label;
+
+  g.appendChild(lineEl);
+  g.appendChild(circ);
+  g.appendChild(txt);
+
+  g.addEventListener('click', () => {
+    document.querySelectorAll('circle[id^="circ-"]').forEach(c => {
+      c.setAttribute('r','7');
+      c.style.opacity = '0.7';
+    });
+    circ.setAttribute('r','9');
+    circ.style.opacity = '1';
+
+    const tagHtml = `<span class="ptag" style="background:${catBg[p.cat]};color:${catColors[p.cat]}">${catLabel[p.cat]}</span>`;
+    const usesHtml = p.uses.map(u =>
+      `<span class="ptag" style="background:#f1efe8;color:#5f5e5a">${u}</span>`
+    ).join('');
+    const dangerHtml = p.danger
+      ? `<div class="danger-box">${p.danger}</div>`
+      : '';
+
+    panel.innerHTML = `
+      <div class="pname">${p.full}</div>
+      <div style="margin-bottom:8px">${tagHtml}</div>
+      <div class="pdesc">${p.desc}</div>
+      <div class="uses-label">Common uses</div>
+      <div style="margin-top:4px">${usesHtml}</div>
+      ${dangerHtml}
+    `;
+  });
+
+  svg.appendChild(g);
+});
+</script>
+</body>
+</html>
